@@ -112,7 +112,7 @@ func main() {
 			return
 		}
 
-		_, err = db.Exec(`INSERT INTO urls (short, original) VALUES (?, ?);`, payload.Short, payload.Url)
+		_, err = db.Exec(`INSERT INTO urls (short, original) VALUES (?, ?);`, "/"+payload.Short, payload.Url)
 		if err != nil {
 			http.Error(w, "Short link with this url already exists", http.StatusBadRequest)
 			return
