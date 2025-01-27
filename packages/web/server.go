@@ -140,7 +140,7 @@ func main() {
 		http.Redirect(w, r, url.Url, http.StatusMovedPermanently)
 	})
 
-	mux.HandleFunc("DELETE /", app.DeleteLinkHandler)
+	mux.HandleFunc("DELETE /api/links", app.DeleteLinkHandler)
 
 	server := http.Server{
 		Addr:    env.Env.Host,
