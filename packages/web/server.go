@@ -9,10 +9,12 @@ import (
 	"log"
 	"math/rand/v2"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/go-playground/validator/v10"
+	"github.com/henmalib/gols/packages/web/env"
+	"github.com/henmalib/gols/packages/web/handlers"
+	"github.com/henmalib/gols/packages/web/helpers"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -22,10 +24,6 @@ type Url struct {
 	Short string
 
 	CreatedAt time.Time
-}
-
-func WriteError(w http.ResponseWriter, status int) {
-	http.Error(w, http.StatusText(status), status)
 }
 
 type CreateLinkPayload struct {
@@ -62,20 +60,6 @@ func EnsureDB() (*sql.DB, error) {
 	return db, nil
 }
 
-func getEnv() (string, string, error) {
-	host := os.Getenv("HOST")
-	apiKey := os.Getenv("API_KEY")
-
-	if host == "" {
-		host = ":5050"
-	}
-	if apiKey == "" {
-		return host, apiKey, errors.New("No API_KEY provided")
-	}
-
-	return host, apiKey, nil
-}
-
 func RandStringRunes(n int) string {
 	var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890")
 
@@ -89,39 +73,37 @@ func RandStringRunes(n int) string {
 func main() {
 	mux := http.NewServeMux()
 
-	host, apiKey, err := getEnv()
-	if err != nil {
-		log.Fatalln(err)
-	}
-
 	db, err := EnsureDB()
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	// TODO: check for auth key
+	app := handlers.App{
+		DB: db,
+	}
+
 	mux.HandleFunc("POST /api/links", func(w http.ResponseWriter, r *http.Request) {
 		authKey := r.Header.Get("Authorization")
-		if authKey != apiKey {
-			WriteError(w, http.StatusUnauthorized)
+		if authKey != env.Env.ApiKey {
+			helpers.WriteError(w, http.StatusUnauthorized)
 			return
 		}
 
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
-			WriteError(w, http.StatusInternalServerError)
+			helpers.WriteError(w, http.StatusInternalServerError)
 		}
 
 		payload := CreateLinkPayload{}
 
 		if err = json.Unmarshal(body, &payload); err != nil {
-			WriteError(w, http.StatusBadRequest)
+			helpers.WriteError(w, http.StatusBadRequest)
 			log.Println(err)
 			return
 		}
 
 		if err = validate.Struct(payload); err != nil {
-			WriteError(w, http.StatusBadRequest)
+			helpers.WriteError(w, http.StatusBadRequest)
 			log.Println(err)
 			return
 		}
@@ -146,24 +128,26 @@ func main() {
 		err := row.Scan(&url.Url)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				WriteError(w, http.StatusNotFound)
+				helpers.WriteError(w, http.StatusNotFound)
 				return
 			}
 
 			log.Println(err)
-			WriteError(w, http.StatusBadRequest)
+			helpers.WriteError(w, http.StatusBadRequest)
 			return
 		}
 
 		http.Redirect(w, r, url.Url, http.StatusMovedPermanently)
 	})
 
+	mux.HandleFunc("DELETE /", app.DeleteLinkHandler)
+
 	server := http.Server{
-		Addr:    host,
+		Addr:    env.Env.Host,
 		Handler: mux,
 	}
 
-	log.Printf("Server is starting: %s", host)
+	log.Printf("Server is starting: %s", env.Env.Host)
 
 	if err := server.ListenAndServe(); err != nil {
 		log.Fatalln(err)
