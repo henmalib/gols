@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand/v2"
 	"net/http"
 	"os"
 	"time"
@@ -29,7 +30,7 @@ func WriteError(w http.ResponseWriter, status int) {
 
 type CreateLinkPayload struct {
 	Url   string `json:"url" validate:"required,uri"`
-	Short string `json:"short" validate:"required"`
+	Short string `json:"short"`
 }
 
 var validate = validator.New(validator.WithRequiredStructEnabled())
@@ -46,6 +47,7 @@ func EnsureDB() (*sql.DB, error) {
 		return db, err
 	}
 
+	// TODO: usage count
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS urls (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             short TEXT UNIQUE NOT NULL,
@@ -72,6 +74,16 @@ func getEnv() (string, string, error) {
 	}
 
 	return host, apiKey, nil
+}
+
+func RandStringRunes(n int) string {
+	var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890")
+
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letterRunes[rand.IntN(len(letterRunes))]
+	}
+	return string(b)
 }
 
 func main() {
@@ -104,12 +116,18 @@ func main() {
 
 		if err = json.Unmarshal(body, &payload); err != nil {
 			WriteError(w, http.StatusBadRequest)
+			log.Println(err)
 			return
 		}
 
 		if err = validate.Struct(payload); err != nil {
 			WriteError(w, http.StatusBadRequest)
+			log.Println(err)
 			return
+		}
+
+		if payload.Short == "" {
+			payload.Short = RandStringRunes(rand.IntN(9) + 3)
 		}
 
 		_, err = db.Exec(`INSERT INTO urls (short, original) VALUES (?, ?);`, "/"+payload.Short, payload.Url)
